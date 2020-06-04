@@ -4,12 +4,12 @@
 #include <fun>
 #include <engine>
 #include <fakemeta>
+#include <hamsandwich>
+
+#define Ham_Player_ResetMaxSpeed Ham_Item_PreFrame
 
 //Sets the sky you want for your server
 #define SKYNAME "space"
-
-//The time before zombies have leap at round start. Has to be a float/decimal
-#define LEAP_CD		15.0	
 
 #define MAX_PLAYERS 32
 new bool:g_restart_attempt[MAX_PLAYERS + 1]
@@ -24,33 +24,6 @@ new hit_zombie[ZOMBIE_HIT][] = {"zombie/claw_strike1.wav", "zombie/claw_strike2.
 new pain_zombie[ZOMBIE_PAIN][] = {"eightDaysLater/zombie_pain1.wav", "eightDaysLater/zombie_pain2.wav" }
 
 new const g_sound_zombiewin[] = 	"ichy/ichy_die2.wav";
-
-new const g_SendAudio_Radio[][] =
-{
-	"%!MRAD_COVERME",
-	"%!MRAD_TAKEPOINT",
-	"%!MRAD_POSITION",
-	"%!MRAD_REGROUP",
-	"%!MRAD_FOLLOWME",
-	"%!MRAD_HITASSIST",
-	"%!MRAD_GO",				//Conflicts with round start audio
-	"%!MRAD_FALLBACK",
-	"%!MRAD_STICKTOG",
-	"%!MRAD_GETINPOS",
-	"%!MRAD_STORMFRONT",
-	"%!MRAD_REPORTIN",
-	"%!MRAD_AFFIRM",
-	"%!MRAD_ROGER",
-	"%!MRAD_ENEMYSPOT",
-	"%!MRAD_BACKUP",
-	"%!MRAD_CLEAR",
-	"%!MRAD_INPOS",
-	"%!MRAD_REPRTINGIN",
-	"%!MRAD_BLOW",
-	"%!MRAD_NEGATIVE",
-	"%!MRAD_ENEMYDOWN"
-};
-
 
 #define Keysmenu_1 (1<<0)|(1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<9)
 #define fm_find_ent_by_class(%1,%2) engfunc(EngFunc_FindEntityByString, %1, "classname", %2)
@@ -69,13 +42,12 @@ stock g_WeaponSlots[] = { 0, 2, 0, 1, 4, 1, 5, 1, 1, 4, 2, 2, 1, 1, 1, 1, 2, 2, 
 stock g_MaxBPAmmo[] = { 0, 52, 0, 90, 1, 32, 1, 100, 90, 1, 120, 100, 100, 90, 90, 90, 100, 120, 30, 120, 200, 21, 90, 120, 90, 2, 35, 90, 90, 0, 100 }
 
 new bool:g_zombie[33]
-new bool:g_speed
 
 new mod_name[32] = "8 Days Later"
 
 //Pcvars...
 new zomb_switch, zomb_hp,zomb_ap,zomb_speed,zomb_lightning,
-zomb_leap,zomb_money,zomb_zdmg, zomb_hdmg,zomb_ammo, zomb_nvg, zomb_obj
+zomb_money,zomb_zdmg, zomb_hdmg,zomb_ammo, zomb_obj
 
 new MODEL[256], zomb_model, use_model
 new bombMap = 0
@@ -141,16 +113,15 @@ public plugin_init() {
 	zomb_ap = register_cvar("zs_armour","4000")
 	zomb_speed = register_cvar("zs_speed","400")
 	zomb_lightning = register_cvar("zs_lightning","0")
-	zomb_leap = register_cvar("zs_leap","0")
 	zomb_money = register_cvar("zs_money","1000")
 	zomb_zdmg = register_cvar("zs_zdmg","55")
 	zomb_hdmg = register_cvar("zs_hdmg","150")
 	zomb_ammo = register_cvar("zs_ammo","0")
-	zomb_nvg = register_cvar("zs_nvg","1")
 	zomb_obj = register_cvar("zs_objectives","1")
 	
 	zomb_model = register_cvar("zs_model","eightDaysLaterZombie")
 	use_model = register_cvar("zs_use","1")
+	RegisterHam(Ham_Player_ResetMaxSpeed, "player",	"Bacon_ResetMaxSpeed", 1);
 	
 	if(fm_find_ent_by_class(1, "info_bomb_target") || fm_find_ent_by_class(1, "func_bomb_target")) {
 		bombMap = 1;
@@ -243,7 +214,6 @@ public plugin_precache() {
 public client_putinserver(id) {
 	g_zombie[id] = false
 	g_restart_attempt[id] = false
-	g_speed = false
 	client_cmd(id, "stopsound")
 }
 
@@ -352,25 +322,6 @@ public event_new_round(id) {
 	if(hostageMap && get_pcvar_num(zomb_obj)) {
 		set_task(0.1,"move_hostages")
 	}
-	
-	g_speed = false
-	new freeze = get_cvar_num("mp_freezetime")
-	set_task(float(freeze),"allow_speed")
-}
-
-public allow_speed() {
-	
-	g_speed = true
-	
-	new players[32], num, i
-	
-	get_players(players, num)
-	
-	for (i = 0 ; i < num; i++) {
-		if (g_zombie[players[i]]) {
-			set_user_maxspeed(players[i], (get_pcvar_float(zomb_speed)))		
-		}
-	}
 }
 
 public logevent_round_start(id) {
@@ -379,18 +330,8 @@ public logevent_round_start(id) {
 		return PLUGIN_HANDLED
 	}
 	
-	if (get_pcvar_num(zomb_nvg)) {
-		server_cmd("amx_restrict on nvgs")
-	} else {
-		server_cmd("amx_restrict off nvgs")
-	}
-	
 	//set_task (0.5 , "team_check")
 	set_task (5.0 , "StartMsg")
-	
-	if (g_zombie[id]) {
-		set_user_maxspeed(id,(get_pcvar_float(zomb_speed)))
-	}
 	
 	return PLUGIN_CONTINUE
 }
@@ -451,16 +392,14 @@ public event_player_spawn(id) {
 		set_user_footsteps(id, 0)
 		set_user_gravity(id,0.875)
 		cs_set_user_money(id,0)
-		
-		if (g_speed) {
-			set_user_maxspeed(id,(get_pcvar_float(zomb_speed)))
-		}
 			
 		if (!cs_get_user_nvg(id)) {
-			
 			cs_set_user_nvg(id,1)
-			engclient_cmd(id, "nightvision")
-		} 
+		}
+		
+		// engclient_cmd(id, "nightvision")
+		turnOnRedNightVision(id)
+		
 	} else if(team == CS_TEAM_CT) {
 		
 		g_zombie[id] = false
@@ -476,6 +415,56 @@ public event_player_spawn(id) {
 	
 	return PLUGIN_CONTINUE
 }
+
+public Bacon_ResetMaxSpeed(id) {
+	
+	if(!g_zombie[id]) {
+		return;
+	}
+
+	static Float: maxspeed; maxspeed = get_pcvar_float(zomb_speed);
+
+	if(get_user_maxspeed(id) != 1.0) {
+		set_user_maxspeed(id, maxspeed);
+	}
+}
+
+
+// NightVision
+public turnOnRedNightVision(id) {
+
+	if (g_zombie[id]) {
+		
+		new alpha
+		alpha = 70
+		
+		message_begin(MSG_ONE_UNRELIABLE, get_user_msgid("ScreenFade"), _, id)
+		write_short(0) // duration
+		write_short(0) // hold time
+		write_short(0x0004) // fade type
+		write_byte(253) // r
+		write_byte(110) // g
+		write_byte(110) // b
+		write_byte(alpha) // alpha
+		message_end()
+		
+		set_player_light(id, "z")
+		
+		return PLUGIN_HANDLED
+	}
+	
+	return PLUGIN_CONTINUE
+}
+
+public set_player_light(id, const LightStyle[]) {
+	message_begin(MSG_ONE_UNRELIABLE, SVC_LIGHTSTYLE, .player = id)
+	write_byte(0)
+	write_string(LightStyle)
+	message_end()
+}
+// End of NightVision
+
+
 
 public fw_info(id,buffer) {
 	
@@ -559,10 +548,6 @@ public event_cur_weapon(id) {
 			}
 		}
 	}
-	
-	if (g_zombie[id] && g_speed) {
-		set_user_maxspeed(id,(get_pcvar_float(zomb_speed)))
-	}
 
 	if (g_zombie[id] && g_WeaponSlots[weapon] == SLOT_KNIFE) {
 		set_pev(id, pev_viewmodel, engfunc(EngFunc_AllocString, "models/eightDaysLater/v_knife_zombieHands.mdl"))
@@ -638,10 +623,6 @@ public Reset_Weapons(id) {
 		
 		if (is_user_bot(id)) {
 			return PLUGIN_HANDLED
-		} else if (get_pcvar_num(zomb_leap)) {
-			set_task(LEAP_CD,"cooldown_begin",id)
-			set_hudmessage(255, 255, 255, -1.0, 0.40, 0, 6.0, 14.0)
-			show_hudmessage(id, "%L",LANG_PLAYER,"LEAP_WAIT",floatround(LEAP_CD))
 		}
 	}
 	
