@@ -8,6 +8,10 @@
 
 #define Ham_Player_ResetMaxSpeed Ham_Item_PreFrame
 
+#define HUD_HIDE_HEALTH_AND_ARMOR (1<<3)
+#define HUD_HIDE_TIMER (1<<4)
+#define HUD_HIDE_MONEY (1<<5)
+
 //Sets the sky you want for your server
 #define SKYNAME "space"
 
@@ -77,13 +81,13 @@ public plugin_init() {
 	
 	register_plugin(PLUGIN, VERSION, AUTHOR)
 	register_cvar(PLUGIN,VERSION,FCVAR_SERVER)
-	
-	register_dictionary("eightDaysLater.txt")
-	
+		
 	register_logevent("logevent_round_start",2, "1=Round_Start")
 	register_logevent("logevent_round_end", 2, "1=Round_End")
 	
 	register_event("ResetHUD","event_hud_reset", "be")
+	register_message(get_user_msgid("HideWeapon"), "msg_hideweapon")
+	
 	register_event("TextMsg","event_restart_attempt", "a", "2=#Game_will_restart_in")
 	register_event("CurWeapon","event_cur_weapon","be", "1=1")
 	register_event("Damage","event_damage_scream","be","2!0","3=0") 
@@ -331,7 +335,6 @@ public logevent_round_start(id) {
 	}
 	
 	//set_task (0.5 , "team_check")
-	set_task (5.0 , "StartMsg")
 	
 	return PLUGIN_CONTINUE
 }
@@ -364,11 +367,11 @@ public event_hud_reset(id) {
 	if(!get_pcvar_num(zomb_switch)) {
 		return PLUGIN_HANDLED
 	}
-		
+
 	if (g_restart_attempt[id]) {
 		g_restart_attempt[id] = false
 	}
-
+	
 	set_task(0.2,"event_player_spawn",id)
 	
 	return PLUGIN_CONTINUE
@@ -411,10 +414,60 @@ public event_player_spawn(id) {
 		}
 	}
 	
+	new hideflags;
+	
+	if (g_zombie[id]) {
+		hideflags = getZombieHideFlags()
+	} else {
+		hideflags = getHumanHideFlags()
+	}
+	
+	if(hideflags) {
+		message_begin(MSG_ONE, get_user_msgid("HideWeapon"), _, id)
+		write_byte(hideflags)
+		message_end()
+	}
+	
 	ShowHUD(id)
 	
 	return PLUGIN_CONTINUE
 }
+
+public msg_hideweapon(id) {
+	
+	new hideflags;
+	
+	if ((id-1) < sizeof(g_zombie) && g_zombie[id]) {
+		hideflags = getZombieHideFlags()
+	} else {
+		hideflags = getHumanHideFlags()
+	}
+
+	if(hideflags) {
+		set_msg_arg_int(1, ARG_BYTE, get_msg_arg_int(1) | hideflags)
+	}
+}
+
+getZombieHideFlags() {
+
+	new iFlags;
+
+	iFlags |= HUD_HIDE_HEALTH_AND_ARMOR;
+	iFlags |= HUD_HIDE_TIMER;
+	iFlags |= HUD_HIDE_MONEY;
+
+	return iFlags;
+}
+
+getHumanHideFlags() {
+
+	new iFlags;
+
+	iFlags |= HUD_HIDE_TIMER;
+
+	return iFlags;
+}
+
 
 public Bacon_ResetMaxSpeed(id) {
 	
@@ -506,10 +559,10 @@ public ShowHUD(id) {
 	}
 
 	if(g_zombie[id]) {
-		new hp = get_user_health(id)
-		new ap = get_user_armor(id)
-		set_hudmessage(255, 180, 0, 0.02, 0.90, 0, 0.0, 0.3, 0.0, 0.0)
-		ShowSyncHudMsg(id, hudsync , "HP: %d     |AP     : %d", hp, ap)
+		//new hp = get_user_health(id)
+		//new ap = get_user_armor(id)
+		//set_hudmessage(255, 180, 0, 0.02, 0.90, 0, 0.0, 0.3, 0.0, 0.0)
+		//ShowSyncHudMsg(id, hudsync , "HP: %d     |AP     : %d", hp, ap)
 	}
 	
 	set_task(0.1 , "ShowHUD" , id)
@@ -657,10 +710,6 @@ public team_check() {
 		}
 	}
 	return PLUGIN_HANDLED
-}
-
-public StartMsg(id) {
-
 }
 
 public lightning_effects() {
