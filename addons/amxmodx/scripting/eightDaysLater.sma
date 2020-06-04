@@ -23,6 +23,35 @@ new hit_zombie[ZOMBIE_HIT][] = {"zombie/claw_strike1.wav", "zombie/claw_strike2.
 #define ZOMBIE_PAIN 2
 new pain_zombie[ZOMBIE_PAIN][] = {"eightDaysLater/zombie_pain1.wav", "eightDaysLater/zombie_pain2.wav" }
 
+new const g_sound_zombiewin[] = 	"ichy/ichy_die2.wav";
+
+new const g_SendAudio_Radio[][] =
+{
+	"%!MRAD_COVERME",
+	"%!MRAD_TAKEPOINT",
+	"%!MRAD_POSITION",
+	"%!MRAD_REGROUP",
+	"%!MRAD_FOLLOWME",
+	"%!MRAD_HITASSIST",
+	"%!MRAD_GO",				//Conflicts with round start audio
+	"%!MRAD_FALLBACK",
+	"%!MRAD_STICKTOG",
+	"%!MRAD_GETINPOS",
+	"%!MRAD_STORMFRONT",
+	"%!MRAD_REPORTIN",
+	"%!MRAD_AFFIRM",
+	"%!MRAD_ROGER",
+	"%!MRAD_ENEMYSPOT",
+	"%!MRAD_BACKUP",
+	"%!MRAD_CLEAR",
+	"%!MRAD_INPOS",
+	"%!MRAD_REPRTINGIN",
+	"%!MRAD_BLOW",
+	"%!MRAD_NEGATIVE",
+	"%!MRAD_ENEMYDOWN"
+};
+
+
 #define Keysmenu_1 (1<<0)|(1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<9)
 #define fm_find_ent_by_class(%1,%2) engfunc(EngFunc_FindEntityByString, %1, "classname", %2)
 
@@ -32,13 +61,14 @@ new pain_zombie[ZOMBIE_PAIN][] = {"eightDaysLater/zombie_pain1.wav", "eightDaysL
 #define	SLOT_GRENADE	4
 #define	SLOT_C4		5
 
+#define ZOMBIE_RADIO_SPEED 30
+
 #define PRIMARY_WEAPONS_BIT_SUM ((1<<CSW_SCOUT)|(1<<CSW_XM1014)|(1<<CSW_MAC10)|(1<<CSW_AUG)|(1<<CSW_UMP45)|(1<<CSW_SG550)|(1<<CSW_GALIL)|(1<<CSW_FAMAS)|(1<<CSW_AWP)|(1<<CSW_MP5NAVY)|(1<<CSW_M249)|(1<<CSW_M3)|(1<<CSW_M4A1)|(1<<CSW_TMP)|(1<<CSW_G3SG1)|(1<<CSW_SG552)|(1<<CSW_AK47)|(1<<CSW_P90))
 #define SECONDARY_WEAPONS_BIT_SUM ((2<<CSW_P228)|(2<<CSW_ELITE)|(2<<CSW_FIVESEVEN)|(CSW_USP)|(1<<CSW_GLOCK18)|(1<<CSW_DEAGLE))
 stock g_WeaponSlots[] = { 0, 2, 0, 1, 4, 1, 5, 1, 1, 4, 2, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1 ,1, 4, 2, 1, 1, 3, 1 }
 stock g_MaxBPAmmo[] = { 0, 52, 0, 90, 1, 32, 1, 100, 90, 1, 120, 100, 100, 90, 90, 90, 100, 120, 30, 120, 200, 21, 90, 120, 90, 2, 35, 90, 90, 0, 100 }
 
 new bool:g_zombie[33]
-new bool:buying
 new bool:g_speed
 
 new mod_name[32] = "8 Days Later"
@@ -102,13 +132,9 @@ public plugin_init() {
 	register_message(get_user_msgid("TextMsg"),"message_textmsg");
 	register_message(get_user_msgid("HostagePos"),"message_hostagepos");
 	
-	register_clcmd("say","clcmd_say")
+	register_message(get_user_msgid("SendAudio"), "Message_SendAudio");
 	
-	register_menucmd(register_menuid("Buy Menu"), Keysmenu_1, "buy_menu")
-	
-	register_clcmd("fullupdate","clcmd_fullupdate") 
-	
-	register_concmd("zombie_swarm", "zsonoff", ADMIN_BAN, "<0/1> Disable/Enable Zombie Swarm")
+	register_concmd("eightDaysLater", "turnZombieModOnOrOff", ADMIN_BAN, "<0/1> Disable/Enable 8 Days Later")
 	
 	zomb_switch = register_cvar("zs_enabled","1")
 	zomb_hp = register_cvar("zs_health","1000")
@@ -154,7 +180,7 @@ public plugin_init() {
 
 	register_forward(FM_EmitSound, "Forward_EmitSound");
 	
-	format(mod_name, 31, "Zombie Swarm %s", VERSION)
+	format(mod_name, 31, "8 Days Later %s", VERSION)
 	hudsync = CreateHudSyncObj() 
 }
 
@@ -221,7 +247,7 @@ public client_putinserver(id) {
 	client_cmd(id, "stopsound")
 }
 
-public zsonoff(id,level,cid) {
+public turnZombieModOnOrOff(id,level,cid) {
 	
 	if (!cmd_access(id,level,cid,1)) {
 		return PLUGIN_HANDLED
@@ -232,12 +258,12 @@ public zsonoff(id,level,cid) {
 	
 	if (equali(szArg,"1") || equali(szArg,"on")) {
 		
-		if (get_cvar_num("zombie_swarm") == 1) {
+		if (get_cvar_num("eightDaysLater") == 1) {
 			console_print(id, "%s is already on!", PLUGIN)
 			return PLUGIN_HANDLED
 		}
 		
-		zs_on()
+		turnZombieModOn()
 		
 		set_hudmessage(255, 255, 255, -1.0, 0.25, 0, 1.0, 5.0, 0.1, 0.2, -1)
 		show_hudmessage(0, "%s is now ON!", PLUGIN)
@@ -255,7 +281,7 @@ public zsonoff(id,level,cid) {
 			return PLUGIN_HANDLED
 		}
 		
-		zs_off()
+		turnZombieModOff()
 		
 		set_hudmessage(255, 255, 255, -1.0, 0.25, 0, 1.0, 5.0, 0.1, 0.2, -1)
 		show_hudmessage(0, "%s has been turned OFF!", PLUGIN)
@@ -272,7 +298,7 @@ public zsonoff(id,level,cid) {
 	return PLUGIN_HANDLED
 }
 
-public zs_on() {
+public turnZombieModOn() {
 	
 	new maxplayers = get_maxplayers()
 	
@@ -293,7 +319,7 @@ public zs_on() {
 	set_cvar_num("sv_restartround", 3)
 }
 
-public zs_off() {
+public turnZombieModOff() {
 	
 	new maxplayers = get_maxplayers()
 	
@@ -326,10 +352,6 @@ public event_new_round(id) {
 	if(hostageMap && get_pcvar_num(zomb_obj)) {
 		set_task(0.1,"move_hostages")
 	}
-		
-	buying = true
-	new Float:buy_time = get_cvar_float("mp_buytime") * 60
-	set_task(buy_time, "buy_false", 7294)
 	
 	g_speed = false
 	new freeze = get_cvar_num("mp_freezetime")
@@ -379,10 +401,6 @@ public logevent_round_end() {
 		remove_task(7294)	
 	}
 }
-
-public buy_false() buying = false  
-
-public clcmd_fullupdate() return PLUGIN_HANDLED
 
 public event_restart_attempt() {
 	
@@ -661,9 +679,7 @@ public team_check() {
 }
 
 public StartMsg(id) {
-	//client_print(0,print_chat,"%L",LANG_PLAYER,"WELCOME_MSG", VERSION)
-	//client_print(0,print_chat,"%L",LANG_PLAYER,"ZOMBIE_MSG", get_pcvar_num(zomb_hp), get_pcvar_num(zomb_ap), get_pcvar_num(zomb_speed))
-	//client_print(0,print_chat,"%L",LANG_PLAYER,"HELP_MSG")
+
 }
 
 public lightning_effects() {
@@ -862,171 +878,6 @@ public event_damage(id) {
 	return PLUGIN_HANDLED
 }
 
-public clcmd_say(id) {
-	
-	if(!get_pcvar_num(zomb_switch)) {
-		return PLUGIN_HANDLED
-	}
-
-	static ARGS[15]
-	read_args(ARGS,14)
-	
-	remove_quotes(ARGS)
-	
-	if(equali(ARGS,"/help")) {
-		zombie_help(id)
-	} else if (equali(ARGS,"/bm")) {
-		
-		if ( !is_user_alive(id) ) {
-			client_print(id, print_center, "%L", id, "BUY_ALIVE")
-			return PLUGIN_HANDLED
-		} else if ( g_zombie[id] ) {
-			client_print(id, print_center, "%L", id, "BUY_HUMAN")
-			return PLUGIN_HANDLED
-		} else if ( !cs_get_user_buyzone(id) ) {
-			client_print(id, print_center, "%L", id, "BUY_BUYZONE")
-			return PLUGIN_HANDLED
-		} else if (!buying) {
-			new Float:time_buy = get_cvar_float("mp_buytime") * 60
-			client_print(id, print_center, "%L", id, "BUY_TIME", floatround(time_buy))
-			return PLUGIN_HANDLED
-		} else {
-			show_menu(id, Keysmenu_1, "\yBuy Menu\w^n^n1. .40 Dual Elites     \y($800)\w^n2. INGRAM MAC-10     \y($1400)\w^n3. IDF Defender     \y($2000)\w^n4. CV-47     \y($2500)\w^n5. KREIG 552     \y($3500)\w^n6. D3/AU-1     \y($5000)\w^n^n0. Exit") 
-		}
-		
-		return PLUGIN_HANDLED
-	}
-	
-	return PLUGIN_CONTINUE
-}
-
-public zombie_help(id) {
-	
-	new help_title[64], len
-	static msg[2047]
-	format(help_title,63,"%L",id,"HELP_HEADER")
-	len = format(msg,2046,"<body bgcolor=#f5f5f5><font color=#000000><br>")
-	len += format(msg[len],2046-len,"<center><h2>%L</h2><br><table><tr><td><p><b><font color=#000000>",id,"HELP_TITLE")
-	len += format(msg[len],2046-len,"<h2>%L</h2>",id,"HELP_OBJECTIVE")
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_ZOMBIE")
-	
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_ZOMBIE_KNIFE")
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_ZOMBIE_NVG")
-	
-	if (get_pcvar_num(zomb_leap)) {
-		len += format(msg[len],2046-len,"%L<br>",id,"HELP_ZOMBIE_LEAP")
-	}
-		
-	if (get_pcvar_num(zomb_zdmg) >= 1) {
-		len += format(msg[len],2046-len,"%L<br>",id,"HELP_ZOMBIE_HIT",get_pcvar_num(zomb_zdmg))
-	}
-
-	len += format(msg[len],2046-len,"<h2>%L</h2>",id,"HELP_HUMAN")
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_HUMAN_GUNS")
-	
-	if (get_pcvar_num(zomb_nvg)) {
-		len += format(msg[len],2046-len,"%L<br>",id,"HELP_HUMAN_NVG")
-	}
-		
-	if (get_pcvar_num(zomb_hdmg) >= 1) {
-		len += format(msg[len],2046-len,"%L<br>",id,"HELP_HUMAN_HIT",get_pcvar_num(zomb_hdmg))
-	}
-
-	len += format(msg[len],2046-len,"<h2>%L</h2>",id,"HELP_TIPS")
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_TIPS_ONE")
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_TIPS_TWO")
-	
-	len += format(msg[len],2046-len,"%L<br>",id,"HELP_ENJOY")
-	len += format(msg[len],2046-len,"</b><br></td></tr></table><br>Mini_Midget</center>")
-	show_motd(id,msg,help_title)
-}
-
-public buy_menu(id, key) {
-	
-	new money = cs_get_user_money(id)
-	
-	new dualcost = 800
-	new mac10cost = 1400
-	new idfcost = 2000
-	new akcost = 2500
-	new kreigcost = 3500
-	new D3cost = 5000
-	
-	switch (key) {
-		
-		case 0: {
-			if(money < dualcost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", dualcost)
-			} else {
-				drop_sec(id)
-				cs_set_user_money(id, money - dualcost)  
-				give_item(id,"weapon_elite")
-			}
-		}
-		
-		case 1: {
-			
-			if(money < mac10cost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", mac10cost)
-			} else {
-				drop_prim(id)
-				cs_set_user_money(id, money - mac10cost)  
-				give_item(id,"weapon_mac10")
-			}
-		}
-		
-		case 2: {
-			
-			if(money < idfcost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", idfcost)
-			} else {
-				drop_prim(id)
-				cs_set_user_money(id, money - idfcost)  
-				give_item(id,"weapon_galil")
-			}
-		}
-		
-		case 3: {
-			
-			if(money < akcost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", akcost)
-			} else {
-				drop_prim(id)
-				cs_set_user_money(id, money - akcost)  
-				give_item(id,"weapon_ak47")
-			}
-		}
-		
-		case 4: {
-			
-			if(money < kreigcost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", kreigcost)
-			} else {
-				drop_prim(id)
-				cs_set_user_money(id, money - kreigcost)  
-				give_item(id,"weapon_sg552")
-			}
-		}
-		
-		case 5: {
-			
-			if(money < D3cost) {
-				client_print(id, print_center, "%L",id, "BUY_MONEY", D3cost)
-			} else {
-				drop_prim(id)
-				cs_set_user_money(id, money - D3cost)  
-				give_item(id,"weapon_g3sg1")
-			}
-		}
-		
-		case 9: {
-			return PLUGIN_HANDLED
-		}
-	}
-	
-	return PLUGIN_HANDLED 
-}
-
 public message_hostagepos(msg_id,msg_dest,msg_entity) {
 	
 	if(!get_pcvar_num(zomb_obj)) {
@@ -1113,6 +964,24 @@ public Forward_EmitSound(id, channel, sample[], Float:volume, Float:attn, flag, 
 	return FMRES_IGNORED;
 }
 
+public Message_SendAudio(msg_id, msg_dest, id) {
+
+	static AudioCode[22];
+	get_msg_arg_string(2, AudioCode, charsmax(AudioCode) );
+
+	if(g_zombie[id]) {
+		set_msg_arg_int(3, ARG_SHORT, ZOMBIE_RADIO_SPEED);
+	}
+
+	if(equal(AudioCode, "%!MRAD_terwin")) {
+		set_msg_arg_string(2, g_sound_zombiewin);
+	} else if(equal(AudioCode, "%!MRAD_ctwin")) {
+		set_msg_arg_string(2, g_sound_zombiewin);
+	}
+
+	return PLUGIN_CONTINUE;
+}
+
 
 //Stocks by VEN
 stock drop_prim(id) {
@@ -1145,6 +1014,7 @@ stock drop_sec(id) {
 		}
 	}
 }
+
 
 //Stock by Cheap_Suit
 stock Punch_View(id, Float:ViewAngle[3]) {
