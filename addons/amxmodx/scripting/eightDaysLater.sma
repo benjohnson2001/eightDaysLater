@@ -50,21 +50,19 @@ new bool:g_zombie[33]
 new mod_name[32] = "8 Days Later"
 
 //Pcvars...
-new zomb_switch, zomb_hp,zomb_ap,zomb_speed,zomb_lightning,
-zomb_money,zomb_zdmg, zomb_hdmg,zomb_ammo, zomb_obj
+new zombieModEnabled, zombieHealth, zombieArmor, zombieSpeed, nightModeWithLightning, humanHeadDamageForWonkyCamera, zombieHeadDamageForWonkyCamera, spookyAmbientSounds, zombieNightVision, terroristsAreZombies, zombieDisplayHealthAndArmor, zomb_ammo, zomb_obj, cvar_Skyname
 
 new MODEL[256], zomb_model, use_model
 new bombMap = 0
 new hostageMap = 0
-
-//The old commands
-new g_autoteam, g_limitteams, g_flashlight
 
 new hudsync
 
 #define PLUGIN "8 Days Later"
 #define VERSION "1.0"
 #define AUTHOR "pandabot"
+
+#define CONFIG_FILE "eightDaysLater.ini"
 
 new g_ForwardSpawn;
 
@@ -110,21 +108,29 @@ public plugin_init() {
 	
 	register_message(get_user_msgid("SendAudio"), "Message_SendAudio");
 	
-	register_concmd("eightDaysLater", "turnZombieModOnOrOff", ADMIN_BAN, "<0/1> Disable/Enable 8 Days Later")
+	register_concmd("zombieModEnable", "turnZombieModOnOrOff", ADMIN_BAN, "<0/1> Disable/Enable 8 Days Later")
+	register_concmd("zombieTs", "turnTerroristsToZombies", ADMIN_BAN, "<0/1> Disable/Enable Zombie Terrorists")
+
+	zombieModEnabled = register_cvar("edl_zombieModEnabled","1")
+	zombieHealth = register_cvar("edl_zombieHealth","1000")
+	zombieArmor = register_cvar("edl_zombieArmor","4000")
+	zombieSpeed = register_cvar("edl_zombieSpeed","400")
+	nightModeWithLightning = register_cvar("edl_nightModeWithLightning","0")
+	humanHeadDamageForWonkyCamera = register_cvar("edl_humanHeadDamageForWonkyCamera","55")
+	zombieHeadDamageForWonkyCamera = register_cvar("edl_zombieHeadDamageForWonkyCamera","150")
+	spookyAmbientSounds = register_cvar("edl_spookyAmbientSounds","0")
+	zombieNightVision = register_cvar("edl_zombieNightVision","1")
+	terroristsAreZombies = register_cvar("edl_terroristsAreZombies","1")
+	zombieDisplayHealthAndArmor = register_cvar("edl_zombieDisplayHealthAndArmor","1")
 	
-	zomb_switch = register_cvar("zs_enabled","1")
-	zomb_hp = register_cvar("zs_health","1000")
-	zomb_ap = register_cvar("zs_armour","4000")
-	zomb_speed = register_cvar("zs_speed","400")
-	zomb_lightning = register_cvar("zs_lightning","0")
-	zomb_money = register_cvar("zs_money","1000")
-	zomb_zdmg = register_cvar("zs_zdmg","55")
-	zomb_hdmg = register_cvar("zs_hdmg","150")
-	zomb_ammo = register_cvar("zs_ammo","0")
-	zomb_obj = register_cvar("zs_objectives","1")
-	
+	loadConfigFile()
+
+	cvar_Skyname = register_cvar("zswarm_skyname", SKYNAME);
+
 	zomb_model = register_cvar("zs_model","eightDaysLaterZombie")
 	use_model = register_cvar("zs_use","1")
+	zomb_ammo = register_cvar("zs_ammo","0")
+	zomb_obj = register_cvar("zs_objectives","1")
 	RegisterHam(Ham_Player_ResetMaxSpeed, "player",	"Bacon_ResetMaxSpeed", 1);
 	
 	if(fm_find_ent_by_class(1, "info_bomb_target") || fm_find_ent_by_class(1, "func_bomb_target")) {
@@ -134,20 +140,25 @@ public plugin_init() {
 	if(fm_find_ent_by_class(1,"hostage_entity")) {
 		hostageMap = 1
 	}
+	
+	if(get_pcvar_num(nightModeWithLightning) == 1) {
 		
-	g_autoteam = get_cvar_num("mp_autoteambalance")
-	g_limitteams = get_cvar_num("mp_limitteams")
-	g_flashlight = get_cvar_num("mp_flashlight")
+		new sz_Sky[32];
+		get_pcvar_string(cvar_Skyname, sz_Sky, charsmax(sz_Sky));
+
+		set_cvar_string("sv_skyname", sz_Sky);
+		set_cvar_num("sv_skycolor_r", 0);
+		set_cvar_num("sv_skycolor_g", 0);
+		set_cvar_num("sv_skycolor_b", 0);
+		
+		set_task(1.0, "lightning_effects")
+	}
 	
-	server_cmd("sv_skyname %s", SKYNAME)
+	if(get_pcvar_num(spookyAmbientSounds) == 1) {
+		set_task(1.0, "ambience_loop")
+	}
+
 	server_cmd("sv_maxspeed 1000")
-	
-	set_cvar_num("mp_autoteambalance",0)
-	set_cvar_num("mp_limitteams", 1)
-	set_cvar_num("mp_flashlight", 1)
-	
-	set_task(1.0, "lightning_effects")
-	set_task(1.0, "ambience_loop")
   
 	if(g_ForwardSpawn > 0) {
 		unregister_forward(FM_Spawn, g_ForwardSpawn);
@@ -156,7 +167,10 @@ public plugin_init() {
 	register_forward(FM_EmitSound, "Forward_EmitSound");
 	
 	format(mod_name, 31, "8 Days Later %s", VERSION)
-	hudsync = CreateHudSyncObj() 
+	
+	if(get_pcvar_num(zombieDisplayHealthAndArmor) == 1) {
+		hudsync = CreateHudSyncObj() 
+	}
 }
 
 new const g_MapEntities[][] = {
@@ -211,9 +225,99 @@ public plugin_precache() {
 	new iNum;
 	for (iNum = 0; iNum < sizeof g_sound_die; iNum++)
 		precache_sound(g_sound_die[iNum]);
-  
+
 	g_ForwardSpawn = register_forward(FM_Spawn, "Forward_Spawn");
 }
+
+
+public loadConfigFile() {
+
+	// Build customization file path
+	new path[64]
+	get_configsdir(path, charsmax(path))
+	format(path, charsmax(path), "%s/%s", path, CONFIG_FILE)
+	
+	// File not present
+	if (!file_exists(path)) {
+		return;
+	}
+	
+	// Set up some vars to hold parsing info
+	new linedata[1024], key[64], value[960], section
+	
+	// Open customization file for reading
+	new file = fopen(path, "rt")
+	
+	while (file && !feof(file)) {
+		
+		// Read one line at a time
+		fgets(file, linedata, charsmax(linedata))
+		
+		// Replace newlines with a null character to prevent headaches
+		replace(linedata, charsmax(linedata), "^n", "")
+		
+		// Blank line or comment
+		if (!linedata[0] || linedata[0] == ';') {
+			continue;
+		}
+		
+		// New section starting
+		if (linedata[0] == '[') {
+			section++
+			continue;
+		}
+	
+		// Get key and value(s)
+		strtok(linedata, key, charsmax(key), value, charsmax(value), '=')
+
+		// Trim spaces
+		trim(key)
+		trim(value)
+
+		switch (section) {
+			case 1: {
+				
+				if (equal(key, "ZOMBIE_MOD_ENABLED")) {
+					set_cvar_num("edl_zombieModEnabled", str_to_num(value))
+				}
+				if (equal(key, "TERRORISTS_ARE_ZOMBIES")) {
+					set_cvar_num("edl_terroristsAreZombies", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_HEALTH")) {
+					set_cvar_num("edl_zombieHealth", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_ARMOR")) {
+					set_cvar_num("edl_zombieArmor", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_SPEED")) {
+					set_cvar_num("edl_zombieSpeed", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_NIGHTVISION")) {
+					set_cvar_num("edl_zombieNightVision", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_DISPLAY_HEALTH_AND_ARMOR")) {
+					set_cvar_num("edl_zombieDisplayHealthAndArmor", str_to_num(value))
+				}
+				else if (equal(key, "NIGHT_MODE_WITH_LIGHTNING")) {
+					set_cvar_num("edl_nightModeWithLightning", str_to_num(value))
+				}
+				else if (equal(key, "SPOOKY_AMBIENT_SOUNDS")) {
+					set_cvar_num("edl_spookyAmbientSounds", str_to_num(value))
+				}
+				else if (equal(key, "HUMAN_HEAD_DAMAGE_FOR_WONKY_CAMERA")) {
+					set_cvar_num("edl_humanHeadDamageForWonkyCamera", str_to_num(value))
+				}
+				else if (equal(key, "ZOMBIE_HEAD_DAMAGE_FOR_WONKY_CAMERA")) {
+					set_cvar_num("edl_zombieHeadDamageForWonkyCamera", str_to_num(value))
+				}
+			}
+		}
+	}
+	if (file) {
+		fclose(file)
+	}
+}
+
 
 public client_putinserver(id) {
 	g_zombie[id] = false
@@ -232,7 +336,7 @@ public turnZombieModOnOrOff(id,level,cid) {
 	
 	if (equali(szArg,"1") || equali(szArg,"on")) {
 		
-		if (get_cvar_num("eightDaysLater") == 1) {
+		if (get_cvar_num("edl_zombieModEnabled") == 1) {
 			console_print(id, "%s is already on!", PLUGIN)
 			return PLUGIN_HANDLED
 		}
@@ -250,7 +354,7 @@ public turnZombieModOnOrOff(id,level,cid) {
 	
 	if (equali(szArg,"0") || equali(szArg,"off")) {
 		
-		if (get_cvar_num("zs_enabled") == 0) {
+		if (get_cvar_num("edl_zombieModEnabled") == 0) {
 			console_print(id, "%s is already off!", PLUGIN)
 			return PLUGIN_HANDLED
 		}
@@ -281,14 +385,16 @@ public turnZombieModOn() {
 		g_restart_attempt[i] = false
 	}
 	
-	set_cvar_num("zs_enabled", 1)
+	set_cvar_num("edl_zombieModEnabled", 1)
 	
-	set_task(1.0, "lightning_effects")
-	set_task(1.0, "ambience_loop")
 	
-	set_cvar_num("mp_autoteambalance",0)
-	set_cvar_num("mp_limitteams", 1)
-	set_cvar_num("mp_flashlight", 1)
+	if(get_pcvar_num(nightModeWithLightning) == 1) {
+		set_task(1.0, "lightning_effects")
+	}
+	
+	if(get_pcvar_num(spookyAmbientSounds) == 1) {
+		set_task(1.0, "ambience_loop")
+	}	
 	
 	set_cvar_num("sv_restartround", 3)
 }
@@ -303,16 +409,85 @@ public turnZombieModOff() {
 		client_cmd(i, "stopsound")
 	}
 	
-	set_cvar_num("zs_enabled", 0)
+	set_cvar_num("edl_zombieModEnabled", 0)
 	
 	set_lights("#OFF")
 	remove_task(12175)
 	
-	set_cvar_num("mp_autoteambalance",g_autoteam)
-	set_cvar_num("mp_limitteams", g_limitteams)
-	set_cvar_num("mp_flashlight", g_flashlight)
-	
 	set_cvar_num("sv_restartround", 3)
+}
+
+public switchHumanZombieTeams() {
+	
+	new maxplayers = get_maxplayers()
+
+	for (new i = 1; i <= maxplayers; i++) {
+		
+		if (g_zombie[i] == false) {
+			g_zombie[i] = true
+		} else {
+			g_zombie[i] = false
+		}
+
+		g_restart_attempt[i] = false
+		client_cmd(i, "stopsound")
+	}
+}
+
+public turnTerroristsToZombies(id,level,cid) {
+
+	if (!cmd_access(id,level,cid,1)) {
+		return PLUGIN_HANDLED
+	}
+
+	new szArg[5]
+	read_argv(1, szArg, 4)
+	
+	if (equali(szArg,"1") || equali(szArg,"on")) {
+		
+		if (get_cvar_num("edl_terroristsAreZombies") == 1) {
+			console_print(id, "terrorists are already zombies!")
+			return PLUGIN_HANDLED
+		}
+		
+		switchHumanZombieTeams()
+		set_cvar_num("edl_terroristsAreZombies", 1)
+		set_cvar_num("sv_restartround", 3)
+		
+		set_hudmessage(255, 255, 255, -1.0, 0.25, 0, 1.0, 5.0, 0.1, 0.2, -1)
+		show_hudmessage(0, "terrorists are now zombies!")
+		
+		console_print(0, "terrorists are now zombies!")
+		client_print(0, print_chat, "terrorists are now zombies!")
+		
+		return PLUGIN_HANDLED
+	}
+	
+	if (equali(szArg,"0") || equali(szArg,"off")) {
+		
+		if (get_cvar_num("edl_terroristsAreZombies") == 0) {
+			console_print(id, "counter-terrorists are already zombies!")
+			return PLUGIN_HANDLED
+		}
+		
+		switchHumanZombieTeams()
+		set_cvar_num("edl_terroristsAreZombies", 0)
+		set_cvar_num("sv_restartround", 3)
+		
+		set_hudmessage(255, 255, 255, -1.0, 0.25, 0, 1.0, 5.0, 0.1, 0.2, -1)
+		show_hudmessage(0, "counter-terrorists are now zombies!")
+		
+		console_print(0, "counter-terrorists are now zombies!")
+		client_print(0, print_chat, "counter-terrorists are now zombies!")
+		
+		return PLUGIN_HANDLED
+	}
+	
+	console_print(id,  "Invalid argument!")
+	client_print(id, print_chat, "Invalid argument!")
+	
+	return PLUGIN_HANDLED
+	
 }
 
 public GameDesc() { 
@@ -330,11 +505,9 @@ public event_new_round(id) {
 
 public logevent_round_start(id) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
-	
-	//set_task (0.5 , "team_check")
 	
 	return PLUGIN_CONTINUE
 }
@@ -348,7 +521,7 @@ public logevent_round_end() {
 
 public event_restart_attempt() {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 	
@@ -364,7 +537,7 @@ public event_restart_attempt() {
 
 public event_hud_reset(id) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
@@ -377,6 +550,45 @@ public event_hud_reset(id) {
 	return PLUGIN_CONTINUE
 }
 
+public humanPlayerSpawn(id) {
+
+	g_zombie[id] = false
+	set_user_footsteps(id, 0)
+	cs_set_user_money(id, cs_get_user_money(id))
+//		cs_set_user_money(id, cs_get_user_money(id) + 16000)
+	
+	if (get_pcvar_num(use_model)) {
+		cs_reset_user_model(id)
+	}
+}
+
+public zombiePlayerSpawn(id) {
+
+	new CsArmorType:ArmorType = CS_ARMOR_VESTHELM
+
+	g_zombie[id] = true
+	set_task(random_float(0.1,0.5), "Reset_Weapons", id) //Strips zombies if they do have guns
+	set_user_health(id,get_pcvar_num(zombieHealth))
+	cs_set_user_armor(id,get_pcvar_num(zombieArmor),ArmorType)
+	set_user_footsteps(id, 0)
+	set_user_gravity(id,0.875)
+	cs_set_user_money(id,0)
+		
+	if (!cs_get_user_nvg(id)) {
+		cs_set_user_nvg(id,1)
+	}
+			
+	if(get_pcvar_num(zombieNightVision) == 0) {
+		// do nothing
+	} else if(get_pcvar_num(zombieNightVision) == 1) {
+		turnOnRedNightVision(id)
+	} else if(get_pcvar_num(zombieNightVision) == 2) {
+		engclient_cmd(id, "nightvision")
+	} else {
+		turnOnRedNightVision(id)
+	}
+}
+
 public event_player_spawn(id) {
 	
 	if(!is_user_alive(id)) {
@@ -384,33 +596,21 @@ public event_player_spawn(id) {
 	}
 
 	new CsTeams:team = cs_get_user_team(id)
-	new CsArmorType:ArmorType = CS_ARMOR_VESTHELM
 	
 	if(team == CS_TEAM_T) {
 		
-		g_zombie[id] = true
-		set_task(random_float(0.1,0.5), "Reset_Weapons", id) //Strips zombies if they do have guns
-		set_user_health(id,get_pcvar_num(zomb_hp))
-		cs_set_user_armor(id,get_pcvar_num(zomb_ap),ArmorType)
-		set_user_footsteps(id, 0)
-		set_user_gravity(id,0.875)
-		cs_set_user_money(id,0)
-			
-		if (!cs_get_user_nvg(id)) {
-			cs_set_user_nvg(id,1)
+		if(get_pcvar_num(terroristsAreZombies)) {
+			zombiePlayerSpawn(id)
+		} else {
+			humanPlayerSpawn(id)
 		}
-		
-		// engclient_cmd(id, "nightvision")
-		turnOnRedNightVision(id)
-		
+
 	} else if(team == CS_TEAM_CT) {
 		
-		g_zombie[id] = false
-		set_user_footsteps(id, 0)
-		cs_set_user_money(id, cs_get_user_money(id) + get_pcvar_num(zomb_money))
-		
-		if (get_pcvar_num(use_model)) {
-			cs_reset_user_model(id)
+		if(get_pcvar_num(terroristsAreZombies)) {
+			humanPlayerSpawn(id)
+		} else {
+			zombiePlayerSpawn(id)
 		}
 	}
 	
@@ -437,7 +637,7 @@ public msg_hideweapon(id) {
 	
 	new hideflags;
 	
-	if ((id-1) < sizeof(g_zombie) && g_zombie[id]) {
+	if (id < sizeof(g_zombie) && g_zombie[id]) {
 		hideflags = getZombieHideFlags()
 	} else {
 		hideflags = getHumanHideFlags()
@@ -475,7 +675,7 @@ public Bacon_ResetMaxSpeed(id) {
 		return;
 	}
 
-	static Float: maxspeed; maxspeed = get_pcvar_float(zomb_speed);
+	static Float: maxspeed; maxspeed = get_pcvar_float(zombieSpeed);
 
 	if(get_user_maxspeed(id) != 1.0) {
 		set_user_maxspeed(id, maxspeed);
@@ -558,11 +758,12 @@ public ShowHUD(id) {
 		return PLUGIN_HANDLED
 	}
 
-	if(g_zombie[id]) {
-		//new hp = get_user_health(id)
-		//new ap = get_user_armor(id)
-		//set_hudmessage(255, 180, 0, 0.02, 0.90, 0, 0.0, 0.3, 0.0, 0.0)
-		//ShowSyncHudMsg(id, hudsync , "HP: %d     |AP     : %d", hp, ap)
+	if(g_zombie[id] && get_pcvar_num(zombieDisplayHealthAndArmor) == 1) {
+
+		new hp = get_user_health(id)
+		new ap = get_user_armor(id)
+		set_hudmessage(255, 180, 0, 0.02, 0.90, 0, 0.0, 0.3, 0.0, 0.0)
+		ShowSyncHudMsg(id, hudsync , "HP: %d     |AP     : %d", hp, ap)
 	}
 	
 	set_task(0.1 , "ShowHUD" , id)
@@ -572,7 +773,7 @@ public ShowHUD(id) {
 
 public event_cur_weapon(id) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 		
@@ -634,7 +835,7 @@ public give_ammo(id , weapon , clip) {
 
 public event_status_icon(id) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
@@ -697,40 +898,20 @@ public cooldown_begin(id) {
 	return PLUGIN_CONTINUE
 }
 
-public team_check() {
-	
-	new players[32],num,i,id
-	get_players(players,num,"d")
-	
-	for(i = 0; i < num; i++) {
-		id = players[i]
-		if (!g_zombie[id]) {
-			user_silentkill(id)
-			cs_set_user_team(id,CS_TEAM_T)
-		}
-	}
-	return PLUGIN_HANDLED
-}
-
 public lightning_effects() {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
-	if (get_pcvar_num(zomb_lightning) == 0) {	
+	if (get_pcvar_num(nightModeWithLightning) == 0) {	
 		set_lights("#OFF")
 		remove_task(12175)
-		set_task(20.0,"lightning_effects")
-	} else if (get_pcvar_num(zomb_lightning) == 1) {
+	} else if (get_pcvar_num(nightModeWithLightning) == 1) {
 		//set_lights("a")
 		//set_lights("b")
 		set_lights("c")
 		set_task(random_float(10.0,17.0),"thunder_clap",12175)
-	} else if (get_pcvar_num(zomb_lightning) == 2) {
-		set_lights("b")
-		remove_task(12175)
-		set_task(20.0,"lightning_effects")
 	}
 	
 	return PLUGIN_CONTINUE
@@ -738,7 +919,7 @@ public lightning_effects() {
 
 public thunder_clap() {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
@@ -752,20 +933,20 @@ public thunder_clap() {
 
 public ambience_loop() {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
 	client_cmd(0,"spk eightDaysLater/ambience.wav")
 	
-	set_task(17.0,"ambience_loop")
+	set_task(17.0, "ambience_loop")
 	
 	return PLUGIN_CONTINUE
 }
 
 public fw_Touch(pToucher, pTouched) {
 
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return FMRES_IGNORED
 	}
 
@@ -793,7 +974,7 @@ public fw_Touch(pToucher, pTouched) {
 
 public fw_EmitSound(id, channel, sample[]) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return FMRES_IGNORED
 	}
 
@@ -837,7 +1018,7 @@ public fw_Cmd(id, handle, seed) {
 
 public event_damage_scream(id) {
 	
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
@@ -854,7 +1035,7 @@ public event_damage_scream(id) {
 
 public event_damage(id) {
 
-	if(!get_pcvar_num(zomb_switch)) {
+	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
@@ -872,9 +1053,9 @@ public event_damage(id) {
 	}
 	
 	new current_hp = get_user_health(attacker)
-	new max_hp = get_pcvar_num(zomb_hp)
-	new zdmg = get_pcvar_num(zomb_zdmg)
-	new hdmg = get_pcvar_num(zomb_hdmg)
+	new max_hp = get_pcvar_num(zombieHealth)
+	new zdmg = get_pcvar_num(humanHeadDamageForWonkyCamera)
+	new hdmg = get_pcvar_num(zombieHeadDamageForWonkyCamera)
 	
 	current_hp += damage
 	
@@ -1003,9 +1184,9 @@ public Message_SendAudio(msg_id, msg_dest, id) {
 		set_msg_arg_int(3, ARG_SHORT, ZOMBIE_RADIO_SPEED);
 	}
 
-	if(equal(AudioCode, "%!MRAD_terwin")) {
+	if(equal(AudioCode, "%!MRAD_terwin") && get_pcvar_num(terroristsAreZombies) == 1.0) {
 		set_msg_arg_string(2, g_sound_zombiewin);
-	} else if(equal(AudioCode, "%!MRAD_ctwin")) {
+	} else if(equal(AudioCode, "%!MRAD_ctwin") && get_pcvar_num(terroristsAreZombies) == 0.0) {
 		set_msg_arg_string(2, g_sound_zombiewin);
 	}
 
