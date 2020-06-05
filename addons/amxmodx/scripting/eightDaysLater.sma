@@ -554,8 +554,8 @@ public humanPlayerSpawn(id) {
 
 	g_zombie[id] = false
 	set_user_footsteps(id, 0)
-	cs_set_user_money(id, cs_get_user_money(id))
-//		cs_set_user_money(id, cs_get_user_money(id) + 16000)
+//	cs_set_user_money(id, cs_get_user_money(id))
+		cs_set_user_money(id, cs_get_user_money(id) + 16000)
 	
 	if (get_pcvar_num(use_model)) {
 		cs_reset_user_model(id)
