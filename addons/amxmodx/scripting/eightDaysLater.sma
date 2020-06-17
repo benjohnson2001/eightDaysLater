@@ -962,10 +962,6 @@ public thunder_clap() {
 }
 
 public ambience_loop() {
-	
-	if(!get_pcvar_num(zombieModEnabled)) {
-		return PLUGIN_HANDLED
-	}
 
 	client_cmd(0,"spk eightDaysLater/ambience.wav")
 	
@@ -1064,10 +1060,6 @@ public event_damage_scream(id) {
 }
 
 public event_damage(id) {
-
-	if(!get_pcvar_num(zombieModEnabled)) {
-		return PLUGIN_HANDLED
-	}
 
 	if(!is_user_alive(id)) {
 		return PLUGIN_HANDLED
