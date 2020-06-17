@@ -59,7 +59,7 @@ new hostageMap = 0
 new hudsync
 
 #define PLUGIN "8 Days Later"
-#define VERSION "1.0"
+#define VERSION "1.1"
 #define AUTHOR "pandabot"
 
 #define CONFIG_FILE "eightDaysLater.ini"
