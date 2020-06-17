@@ -50,7 +50,7 @@ new bool:g_zombie[33]
 new mod_name[32] = "8 Days Later"
 
 //Pcvars...
-new zombieModEnabled, zombieHealth, zombieArmor, zombieSpeed, nightModeWithLightning, humanHeadDamageForWonkyCamera, zombieHeadDamageForWonkyCamera, spookyAmbientSounds, zombieNightVision, terroristsAreZombies, zombieDisplayHealthAndArmor, zomb_ammo, zomb_obj, cvar_Skyname
+new zombieModEnabled, zombieHealth, zombieArmor, zombieSpeed, nightMode, nightModeDarknessLevel, weatherMode, humanHeadDamageForWonkyCamera, zombieHeadDamageForWonkyCamera, spookyAmbientSounds, zombieNightVision, terroristsAreZombies, zombieDisplayHealthAndArmor, zomb_ammo, zomb_obj, cvar_Skyname
 
 new MODEL[256], zomb_model, use_model
 new bombMap = 0
@@ -80,7 +80,7 @@ public plugin_init() {
 	register_plugin(PLUGIN, VERSION, AUTHOR)
 	register_cvar(PLUGIN,VERSION,FCVAR_SERVER)
 		
-	register_logevent("logevent_round_start",2, "1=Round_Start")
+	register_logevent("logevent_round_start", 2, "1=Round_Start")
 	register_logevent("logevent_round_end", 2, "1=Round_End")
 	
 	register_event("ResetHUD","event_hud_reset", "be")
@@ -111,20 +111,6 @@ public plugin_init() {
 	register_concmd("zombieModEnable", "turnZombieModOnOrOff", ADMIN_BAN, "<0/1> Disable/Enable 8 Days Later")
 	register_concmd("zombieTs", "turnTerroristsToZombies", ADMIN_BAN, "<0/1> Disable/Enable Zombie Terrorists")
 
-	zombieModEnabled = register_cvar("edl_zombieModEnabled","1")
-	zombieHealth = register_cvar("edl_zombieHealth","1000")
-	zombieArmor = register_cvar("edl_zombieArmor","4000")
-	zombieSpeed = register_cvar("edl_zombieSpeed","400")
-	nightModeWithLightning = register_cvar("edl_nightModeWithLightning","0")
-	humanHeadDamageForWonkyCamera = register_cvar("edl_humanHeadDamageForWonkyCamera","55")
-	zombieHeadDamageForWonkyCamera = register_cvar("edl_zombieHeadDamageForWonkyCamera","150")
-	spookyAmbientSounds = register_cvar("edl_spookyAmbientSounds","0")
-	zombieNightVision = register_cvar("edl_zombieNightVision","1")
-	terroristsAreZombies = register_cvar("edl_terroristsAreZombies","1")
-	zombieDisplayHealthAndArmor = register_cvar("edl_zombieDisplayHealthAndArmor","1")
-	
-	loadConfigFile()
-
 	cvar_Skyname = register_cvar("zswarm_skyname", SKYNAME);
 
 	zomb_model = register_cvar("zs_model","eightDaysLaterZombie")
@@ -141,7 +127,7 @@ public plugin_init() {
 		hostageMap = 1
 	}
 	
-	if(get_pcvar_num(nightModeWithLightning) == 1) {
+	if(get_pcvar_num(nightMode) == 1 || get_pcvar_num(nightMode) == 2) {
 		
 		new sz_Sky[32];
 		get_pcvar_string(cvar_Skyname, sz_Sky, charsmax(sz_Sky));
@@ -151,7 +137,7 @@ public plugin_init() {
 		set_cvar_num("sv_skycolor_g", 0);
 		set_cvar_num("sv_skycolor_b", 0);
 		
-		set_task(1.0, "lightning_effects")
+		set_task(1.0, "applyNightMode")
 	}
 	
 	if(get_pcvar_num(spookyAmbientSounds) == 1) {
@@ -206,6 +192,30 @@ public Forward_Spawn(iEnt) {
 }
 
 public plugin_precache() {
+	
+	zombieModEnabled = register_cvar("edl_zombieModEnabled","1")
+	terroristsAreZombies = register_cvar("edl_terroristsAreZombies","1")
+	zombieHealth = register_cvar("edl_zombieHealth","1000")
+	zombieArmor = register_cvar("edl_zombieArmor","4000")
+	zombieSpeed = register_cvar("edl_zombieSpeed","400")
+	zombieNightVision = register_cvar("edl_zombieNightVision","0")
+	zombieDisplayHealthAndArmor = register_cvar("edl_zombieDisplayHealthAndArmor","0")
+	nightMode = register_cvar("edl_nightMode","0")
+	nightModeDarknessLevel = register_cvar("edl_nightModeDarknessLevel","3")
+	weatherMode = register_cvar("edl_weatherMode","0")
+	spookyAmbientSounds = register_cvar("edl_spookyAmbientSounds","0")
+	humanHeadDamageForWonkyCamera = register_cvar("edl_humanHeadDamageForWonkyCamera","55")
+	zombieHeadDamageForWonkyCamera = register_cvar("edl_zombieHeadDamageForWonkyCamera","150")
+	
+	loadConfigFile()
+	
+	if (get_pcvar_num(weatherMode) == 1) {
+		create_entity("env_rain")
+	}
+	
+	if (get_pcvar_num(weatherMode) == 2) {
+		create_entity("env_snow")
+	}
 	
 	precache_model("models/player/eightDaysLaterZombie/eightDaysLaterZombie.mdl")
 	precache_model("models/eightDaysLater/v_knife_zombieHands.mdl")
@@ -298,9 +308,15 @@ public loadConfigFile() {
 				else if (equal(key, "ZOMBIE_DISPLAY_HEALTH_AND_ARMOR")) {
 					set_cvar_num("edl_zombieDisplayHealthAndArmor", str_to_num(value))
 				}
-				else if (equal(key, "NIGHT_MODE_WITH_LIGHTNING")) {
-					set_cvar_num("edl_nightModeWithLightning", str_to_num(value))
+				else if (equal(key, "NIGHT_MODE")) {
+					set_cvar_num("edl_nightMode", str_to_num(value))
 				}
+				else if (equal(key, "NIGHT_MODE_DARKNESS_LEVEL")) {
+					set_cvar_num("edl_nightModeDarknessLevel", str_to_num(value))
+				}
+				else if (equal(key, "WEATHER_MODE")) {
+					set_cvar_num("edl_weatherMode", str_to_num(value))
+				}					
 				else if (equal(key, "SPOOKY_AMBIENT_SOUNDS")) {
 					set_cvar_num("edl_spookyAmbientSounds", str_to_num(value))
 				}
@@ -388,8 +404,8 @@ public turnZombieModOn() {
 	set_cvar_num("edl_zombieModEnabled", 1)
 	
 	
-	if(get_pcvar_num(nightModeWithLightning) == 1) {
-		set_task(1.0, "lightning_effects")
+	if(get_pcvar_num(nightMode) == 1 || get_pcvar_num(nightMode) == 2) {
+		set_task(1.0, "applyNightMode")
 	}
 	
 	if(get_pcvar_num(spookyAmbientSounds) == 1) {
@@ -555,7 +571,7 @@ public humanPlayerSpawn(id) {
 	g_zombie[id] = false
 	set_user_footsteps(id, 0)
 //	cs_set_user_money(id, cs_get_user_money(id))
-		cs_set_user_money(id, cs_get_user_money(id) + 16000)
+	cs_set_user_money(id, cs_get_user_money(id) + 16000)
 	
 	if (get_pcvar_num(use_model)) {
 		cs_reset_user_model(id)
@@ -898,19 +914,41 @@ public cooldown_begin(id) {
 	return PLUGIN_CONTINUE
 }
 
-public lightning_effects() {
+public applyNightMode() {
 	
 	if(!get_pcvar_num(zombieModEnabled)) {
 		return PLUGIN_HANDLED
 	}
 
-	if (get_pcvar_num(nightModeWithLightning) == 0) {	
+	if (get_pcvar_num(nightMode) == 0) {
 		set_lights("#OFF")
 		remove_task(12175)
-	} else if (get_pcvar_num(nightModeWithLightning) == 1) {
-		//set_lights("a")
-		//set_lights("b")
-		set_lights("c")
+	} else if (get_pcvar_num(nightMode) == 1 || get_pcvar_num(nightMode) == 2) {
+		
+		switch(get_pcvar_num(nightModeDarknessLevel)) {
+			
+			case 1: {
+				set_lights("e")
+			}
+			case 2: {
+				set_lights("d")
+			}
+			case 3: {
+				set_lights("c")
+			}
+			case 4: {
+				set_lights("b")
+			}
+			case 5: {
+				set_lights("a")
+			}
+			default: {
+				set_lights("c")
+			}
+		}
+	}
+	
+	if (get_pcvar_num(nightMode) == 2) {
 		set_task(random_float(10.0,17.0),"thunder_clap",12175)
 	}
 	
@@ -926,7 +964,7 @@ public thunder_clap() {
 	set_lights("p")
 	client_cmd(0,"speak ambience/thunder_clap.wav")
 	
-	set_task(1.25,"lightning_effects",12175)
+	set_task(1.25,"applyNightMode",12175)
 	
 	return PLUGIN_CONTINUE
 }
