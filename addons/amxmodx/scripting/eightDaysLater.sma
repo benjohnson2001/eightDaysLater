@@ -1076,36 +1076,46 @@ public event_damage(id) {
 	
 	new current_hp = get_user_health(attacker)
 	new max_hp = get_pcvar_num(zombieHealth)
-	new zdmg = get_pcvar_num(humanHeadDamageForWonkyCamera)
-	new hdmg = get_pcvar_num(zombieHeadDamageForWonkyCamera)
+	new hhdfwc = get_pcvar_num(humanHeadDamageForWonkyCamera)
+	new zhdfwc = get_pcvar_num(zombieHeadDamageForWonkyCamera)
 	
 	current_hp += damage
+
+	if(!get_pcvar_num(zombieModEnabled) && hitzone == HIT_HEAD) {
+		
+		if (hhdfwc <= 0) {
+			return PLUGIN_CONTINUE
+		} else if (damage >= hhdfwc) {
+			Punch_View(id, Random_Float)
+		}
+		
+	} else {
+		
+		if (attacker > sizeof g_zombie) {
+			return PLUGIN_CONTINUE
+		}
+		
+		if ( g_zombie[attacker] && weapon == CSW_KNIFE ) {
 	
-	if (attacker > sizeof g_zombie) {
-		return PLUGIN_CONTINUE
-	}
+			if (hhdfwc <= 0) {
+				return PLUGIN_CONTINUE
+			} else if (damage >= hhdfwc) {
+				Punch_View(id, Random_Float)
+			}
 
-
-	if ( g_zombie[attacker] && weapon == CSW_KNIFE ) {
-		
-		if (zdmg <= 0) {
-			return PLUGIN_CONTINUE
-		} else if (damage >= zdmg) {
-			Punch_View(id, Random_Float)
-		}
-
-		if ( current_hp >= max_hp ) {
-			set_user_health(attacker, max_hp)
-		} else { 
-			set_user_health(attacker, current_hp)	
-		}
-	} else if ( !g_zombie[attacker] && hitzone == HIT_HEAD) {
-		
-		if (hdmg <= 0) {
-			return PLUGIN_CONTINUE
-		} else if (damage >= hdmg) {
-			Punch_View(id, Random_Float)
-		}
+			if ( current_hp >= max_hp ) {
+				set_user_health(attacker, max_hp)
+			} else { 
+				set_user_health(attacker, current_hp)	
+			}
+		} else if ( !g_zombie[attacker] && hitzone == HIT_HEAD) {
+			
+			if (zhdfwc <= 0) {
+				return PLUGIN_CONTINUE
+			} else if (damage >= zhdfwc) {
+				Punch_View(id, Random_Float)
+			}
+		}	
 	}
 
 	return PLUGIN_HANDLED
@@ -1206,10 +1216,13 @@ public Message_SendAudio(msg_id, msg_dest, id) {
 		set_msg_arg_int(3, ARG_SHORT, ZOMBIE_RADIO_SPEED);
 	}
 
-	if(equal(AudioCode, "%!MRAD_terwin") && get_pcvar_num(terroristsAreZombies) == 1.0) {
-		set_msg_arg_string(2, g_sound_zombiewin);
-	} else if(equal(AudioCode, "%!MRAD_ctwin") && get_pcvar_num(terroristsAreZombies) == 0.0) {
-		set_msg_arg_string(2, g_sound_zombiewin);
+	if(get_pcvar_num(zombieModEnabled)) {
+		
+		if(equal(AudioCode, "%!MRAD_terwin") && get_pcvar_num(terroristsAreZombies) == 1.0) {
+			set_msg_arg_string(2, g_sound_zombiewin);
+		} else if(equal(AudioCode, "%!MRAD_ctwin") && get_pcvar_num(terroristsAreZombies) == 0.0) {
+			set_msg_arg_string(2, g_sound_zombiewin);
+		}
 	}
 
 	return PLUGIN_CONTINUE;
