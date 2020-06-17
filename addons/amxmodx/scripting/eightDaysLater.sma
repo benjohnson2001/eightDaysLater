@@ -915,10 +915,6 @@ public cooldown_begin(id) {
 }
 
 public applyNightMode() {
-	
-	if(!get_pcvar_num(zombieModEnabled)) {
-		return PLUGIN_HANDLED
-	}
 
 	if (get_pcvar_num(nightMode) == 0) {
 		set_lights("#OFF")
@@ -956,10 +952,6 @@ public applyNightMode() {
 }
 
 public thunder_clap() {
-	
-	if(!get_pcvar_num(zombieModEnabled)) {
-		return PLUGIN_HANDLED
-	}
 
 	set_lights("p")
 	client_cmd(0,"speak ambience/thunder_clap.wav")
